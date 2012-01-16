@@ -1,9 +1,12 @@
-//
+//  
 //  MAConfirmButton.m
-//
+//  
 //  Created by Mike on 11-03-28.
 //  Copyright 2011 Mike Ahmarani. All rights reserved.
-//
+//  
+//  Additions and improvements:
+//  Copyright 2012 Wolter Group New York, Inc., All rights reserved.
+//  
 
 #import "MAConfirmButton.h"
 #import "UIColor-Expanded.h"
@@ -19,23 +22,49 @@
 @property (nonatomic, copy) NSString *disabled;
 @property (nonatomic, retain) UIColor *tint;
 
-- (void)toggle;
 - (void)setupLayers;
-- (void)cancel;
 - (void)lighten;
 - (void)darken;
+- (void)toggle;
+- (void)cancel;
+
+@end
+
+@interface MAConfirmButtonOverlayView : UIView
+@property (readwrite, assign) MAConfirmButton * button;
+@end
+
+@implementation MAConfirmButtonOverlayView
+@synthesize button;
+
+-(UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  if(self.button != nil && [self.button pointInside:[self.button convertPoint:point fromView:self] withEvent:event]){
+    return self.button;
+  }else{
+    return [super hitTest:point withEvent:event];
+  }
+}
+
+-(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event { }
+-(void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event { }
+-(void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event { }
+-(void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
+  if([[touches anyObject] tapCount] > 0) [self.button cancel];
+}
 
 @end
 
 @implementation MAConfirmButton
 
-@synthesize title, confirm, disabled, tint, toggleAnimation;
+@synthesize title, confirm, disabled, tint, toggleAnimation, representedObject, delegate;
 
 - (void)dealloc{
   [title release];
   [confirm release];
   [disabled release];
   [tint release];
+  [representedObject release];
+  // delegate is not retained
   [super dealloc];
 }
 
@@ -282,9 +311,7 @@
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event{
-  if(!disabled && !confirmed){
-    [self darken];
-  }
+  if(!disabled && !confirmed) [self darken];
   [super touchesBegan:touches withEvent:event];
 }
 
@@ -301,22 +328,27 @@
       cancelOverlay = nil;
       [super touchesEnded:touches withEvent:event];
     }else{
-      [self lighten];			
-      self.selected = YES;		
-      cancelOverlay = [UIButton buttonWithType:UIButtonTypeCustom];
-      [cancelOverlay setFrame:CGRectMake(0, 0, 1024, 1024)];
-      [cancelOverlay addTarget:self action:@selector(cancel) forControlEvents:UIControlEventTouchDown];
-      [self.superview addSubview:cancelOverlay];
-      [self.superview bringSubviewToFront:self];
+      [self lighten];
+      self.selected = YES;
+      UIView *superview = (self.delegate != nil && [self.delegate respondsToSelector:@selector(confirmButtonSuperviewForCancelOverlay:)]) ? [self.delegate confirmButtonSuperviewForCancelOverlay:self] : self.superview;
+      cancelOverlay = [[MAConfirmButtonOverlayView alloc] initWithFrame:CGRectMake(0, 0, superview.bounds.size.width, superview.bounds.size.height)];
+      cancelOverlay.frame = CGRectMake(0, 0, 1024, 1024);
+      cancelOverlay.button = self;
+      [superview addSubview:cancelOverlay];
+      [cancelOverlay release];
     }
   }
+}
+
+- (void)willMoveToSuperview:(UIView *)newSuperview {
+  [self cancel]; // cancel on moving to another view (probably none)
 }
 
 - (void)cancel{
   if(cancelOverlay){
     [cancelOverlay removeFromSuperview];
     cancelOverlay = nil;	
-  }	
+  }
   self.selected = NO;
 }
 
